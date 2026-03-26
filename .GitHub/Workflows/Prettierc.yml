@@ -1,0 +1,11 @@
+# .prettierrc.yml - Syntax normalizer
+semi: true
+singleQuote: true
+tabWidth: 2
+trailingComma: "es5"
+printWidth: 80
+bracketSpacing: true
+arrowParens: "avoid"
+endOfLine: "lf"
+
+# Fixes: trailing commas, bracket spacing, line endings, etc.
