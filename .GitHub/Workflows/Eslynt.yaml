@@ -1,0 +1,26 @@
+# .eslintrc.yml - The "tank" that fixes JS syntax
+env:
+  browser: true
+  es2021: true
+  node: true
+
+extends:
+  - eslint:recommended
+  - plugin:@typescript-eslint/recommended
+
+parser: "@typescript-eslint/parser"
+
+plugins:
+  - "@typescript-eslint"
+  - "prettier"
+
+rules:
+  # Auto-fixable syntax errors
+  semi: ["error", "always"]           # Missing semicolons
+  quotes: ["error", "single"]         # Wrong quote style
+  indent: ["error", 2]                # Indentation
+  "no-unused-vars": "warn"            # Clean up dead code
+  "no-extra-semi": "error"            # Double semicolons
+  "prettier/prettier": "error"        # Format consistency
+
+# Run with: eslint . --ext .js,.ts --fix
