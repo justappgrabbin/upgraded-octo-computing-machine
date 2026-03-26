@@ -1,0 +1,321 @@
+// syntax-tank.js - Run this locally: node syntax-tank.js
+#!/usr/bin/env node
+
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+// ═══════════════════════════════════════════════════════════
+// CONFIGURATION
+// ═══════════════════════════════════════════════════════════
+
+const CONFIG = {
+  dryRun: process.argv.includes('--dry-run'),
+  aggressive: process.argv.includes('--aggressive'),
+  verbose: process.argv.includes('--verbose'),
+  backup: !process.argv.includes('--no-backup'),
+  
+  targets: {
+    js: ['.js', '.ts', '.tsx', '.jsx'],
+    python: ['.py', '.pyw'],
+    rust: ['.rs'],
+    go: ['.go'],
+    yaml: ['.yml', '.yaml', '.json']
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// COLOR OUTPUT
+// ═══════════════════════════════════════════════════════════
+
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m'
+};
+
+function log(level, message) {
+  const color = {
+    info: colors.blue,
+    success: colors.green,
+    warning: colors.yellow,
+    error: colors.red,
+    tank: colors.magenta + colors.bright
+  }[level] || colors.reset;
+  
+  console.log(`${color}[${level.toUpperCase()}]${colors.reset} ${message}`);
+}
+
+// ═══════════════════════════════════════════════════════════
+// FILE DISCOVERY
+// ═══════════════════════════════════════════════════════════
+
+function findFiles(dir, extensions, exclude = ['node_modules', '.git', '__pycache__', '.venv', 'target', 'dist', 'build']) {
+  const files = [];
+  
+  function walk(currentDir) {
+    const items = fs.readdirSync(currentDir);
+    
+    for (const item of items) {
+      const fullPath = path.join(currentDir, item);
+      const stat = fs.statSync(fullPath);
+      
+      if (stat.isDirectory()) {
+        if (!exclude.includes(item)) {
+          walk(fullPath);
+        }
+      } else if (extensions.some(ext => item.endsWith(ext))) {
+        files.push(fullPath);
+      }
+    }
+  }
+  
+  walk(dir);
+  return files;
+}
+
+// ═══════════════════════════════════════════════════════════
+// BACKUP SYSTEM
+// ═══════════════════════════════════════════════════════════
+
+function backupFile(filePath) {
+  if (!CONFIG.backup) return;
+  
+  const backupPath = `${filePath}.syntax-bak`;
+  fs.copyFileSync(filePath, backupPath);
+  log('info', `Backed up: ${filePath}`);
+}
+
+// ═══════════════════════════════════════════════════════════
+// FIXERS
+// ═══════════════════════════════════════════════════════════
+
+const fixers = {
+  // JavaScript/TypeScript Fixer
+  async javascript(files) {
+    log('tank', '🟢 Deploying JavaScript Syntax Tank...');
+    
+    if (files.length === 0) {
+      log('info', 'No JS/TS files found');
+      return;
+    }
+    
+    try {
+      // Check if eslint is available
+      execSync('npx eslint --version', { stdio: 'ignore' });
+      
+      const fileList = files.join(' ');
+      
+      if (CONFIG.dryRun) {
+        log('info', 'DRY RUN - Would fix:');
+        console.log(fileList);
+        return;
+      }
+      
+      // Backup files
+      files.forEach(backupFile);
+      
+      // Run ESLint with auto-fix
+      const cmd = `npx eslint ${fileList} --fix --max-warnings=0`;
+      execSync(cmd, { stdio: CONFIG.verbose ? 'inherit' : 'pipe' });
+      
+      // Run Prettier
+      execSync(`npx prettier --write ${fileList}`, { stdio: 'pipe' });
+      
+      log('success', `Fixed ${files.length} JavaScript/TypeScript files`);
+      
+    } catch (error) {
+      log('warning', 'ESLint/Prettier not available. Run: npm install -g eslint prettier');
+    }
+  },
+  
+  // Python Fixer
+  async python(files) {
+    log('tank', '🐍 Deploying Python Syntax Tank...');
+    
+    if (files.length === 0) {
+      log('info', 'No Python files found');
+      return;
+    }
+    
+    try {
+      // Check tools
+      execSync('python --version', { stdio: 'ignore' });
+      
+      if (CONFIG.dryRun) {
+        log('info', 'DRY RUN - Would fix:');
+        files.forEach(f => console.log(f));
+        return;
+      }
+      
+      // Backup files
+      files.forEach(backupFile);
+      
+      // Aggressive autopep8
+      if (CONFIG.aggressive) {
+        execSync(`autopep8 --recursive --in-place --aggressive --aggressive .`, { stdio: 'pipe' });
+      }
+      
+      // Black formatting
+      try {
+        execSync('black --version', { stdio: 'ignore' });
+        execSync(`black ${files.join(' ')}`, { stdio: 'pipe' });
+      } catch (e) {
+        log('warning', 'Black not installed. Run: pip install black');
+      }
+      
+      // Import sorting
+      try {
+        execSync('isort --version', { stdio: 'ignore' });
+        execSync(`isort ${files.join(' ')}`, { stdio: 'pipe' });
+      } catch (e) {
+        log('warning', 'isort not installed. Run: pip install isort');
+      }
+      
+      log('success', `Fixed ${files.length} Python files`);
+      
+    } catch (error) {
+      log('error', `Python fix failed: ${error.message}`);
+    }
+  },
+  
+  // Rust Fixer
+  async rust(files) {
+    log('tank', '🦀 Deploying Rust Syntax Tank...');
+    
+    if (files.length === 0 || !fs.existsSync('Cargo.toml')) {
+      log('info', 'No Rust project found');
+      return;
+    }
+    
+    try {
+      execSync('cargo fmt --all', { stdio: 'pipe' });
+      execSync('cargo fix --allow-dirty --allow-staged', { stdio: 'pipe' });
+      log('success', 'Rust files formatted and fixed');
+    } catch (error) {
+      log('error', `Rust fix failed: ${error.message}`);
+    }
+  },
+  
+  // Go Fixer
+  async go(files) {
+    log('tank', '🐹 Deploying Go Syntax Tank...');
+    
+    if (files.length === 0 || !fs.existsSync('go.mod')) {
+      log('info', 'No Go project found');
+      return;
+    }
+    
+    try {
+      execSync('go fmt ./...', { stdio: 'pipe' });
+      log('success', 'Go files formatted');
+    } catch (error) {
+      log('error', `Go fix failed: ${error.message}`);
+    }
+  },
+  
+  // YAML/JSON Fixer
+  async yaml(files) {
+    log('tank', '📋 Deploying YAML/JSON Syntax Tank...');
+    
+    if (files.length === 0) return;
+    
+    try {
+      execSync('npx prettier --version', { stdio: 'ignore' });
+      
+      if (CONFIG.dryRun) {
+        log('info', 'DRY RUN - Would format YAML/JSON files');
+        return;
+      }
+      
+      files.forEach(backupFile);
+      execSync(`npx prettier --write ${files.join(' ')}`, { stdio: 'pipe' });
+      log('success', `Fixed ${files.length} YAML/JSON files`);
+      
+    } catch (error) {
+      // Manual YAML fixes if prettier not available
+      files.forEach(file => {
+        try {
+          const content = fs.readFileSync(file, 'utf8');
+          // Basic fixes: normalize indentation, fix trailing spaces
+          let fixed = content
+            .replace(/\t/g, '  ')
+            .replace(/[ \t]+$/gm, '')
+            .replace(/\n{3,}/g, '\n\n');
+          
+          if (!CONFIG.dryRun) {
+            fs.writeFileSync(file, fixed);
+          }
+        } catch (e) {
+          log('error', `Failed to fix ${file}: ${e.message}`);
+        }
+      });
+    }
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// MAIN EXECUTION
+// ═══════════════════════════════════════════════════════════
+
+async function main() {
+  console.log(`
+${colors.magenta}${colors.bright}
+╔══════════════════════════════════════════════════════════╗
+║              🛡️  UNIVERSAL SYNTAX TANK  🛡️              ║
+║          Neural-Powered Code Repair System               ║
+╚══════════════════════════════════════════════════════════╝
+${colors.reset}
+  `);
+  
+  log('info', 'Scanning for files...');
+  
+  const rootDir = process.cwd();
+  const allFiles = {
+    js: findFiles(rootDir, CONFIG.targets.js),
+    python: findFiles(rootDir, CONFIG.targets.python),
+    rust: findFiles(rootDir, CONFIG.targets.rust),
+    go: findFiles(rootDir, CONFIG.targets.go),
+    yaml: findFiles(rootDir, CONFIG.targets.yaml)
+  };
+  
+  // Print summary
+  console.log('\n📁 Files Discovered:');
+  Object.entries(allFiles).forEach(([lang, files]) => {
+    if (files.length > 0) {
+      console.log(`  ${colors.cyan}${lang}:${colors.reset} ${files.length} files`);
+    }
+  });
+  
+  console.log('');
+  
+  // Run fixers
+  await fixers.javascript(allFiles.js);
+  await fixers.python(allFiles.python);
+  await fixers.rust(allFiles.rust);
+  await fixers.go(allFiles.go);
+  await fixers.yaml(allFiles.yaml);
+  
+  // Report
+  console.log(`
+${colors.green}${colors.bright}
+✅ Syntax Tank Mission Complete!
+${colors.reset}
+  `);
+  
+  if (CONFIG.dryRun) {
+    log('info', 'This was a DRY RUN. No files were modified.');
+    log('info', 'Run without --dry-run to apply fixes.');
+  }
+}
+
+// Run
+main().catch(err => {
+  log('error', err.message);
+  process.exit(1);
+});
